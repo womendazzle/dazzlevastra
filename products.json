@@ -1,0 +1,64 @@
+[
+  {
+    "id": 1754465035901,
+    "name": "kurti",
+    "category": "kurti",
+    "price": 1499,
+    "sizes": [
+      "M"
+    ],
+    "image": "/images/product-1754465035896-731589335.jpg"
+  },
+  {
+    "id": 1754465271337,
+    "name": "kurti",
+    "category": "kurti",
+    "price": 1499,
+    "sizes": [
+      "M"
+    ],
+    "image": "/images/product-1754465271335-592778755.jpg"
+  },
+  {
+    "id": 1754465803429,
+    "name": "kurti",
+    "category": "kurti",
+    "price": 1499,
+    "sizes": [
+      "S"
+    ],
+    "image": "/images/product-1754465803424-473206408.jpg"
+  },
+  {
+    "id": 1755266439646,
+    "name": "jewellery",
+    "category": "kurti",
+    "price": 789,
+    "sizes": [],
+    "image": "/images/product-1755266439636-399357357.jpeg"
+  },
+  {
+    "id": 1755266507299,
+    "name": "jewellery",
+    "category": "jewellery",
+    "price": 789,
+    "sizes": [],
+    "image": "/images/product-1755266507298-142691648.png"
+  },
+  {
+    "id": 1755266563787,
+    "name": "uie",
+    "category": "kurti",
+    "price": 890,
+    "sizes": [],
+    "image": "/images/product-1755266563784-778738203.jpg"
+  },
+  {
+    "id": 1755266583431,
+    "name": "knns",
+    "category": "kurti",
+    "price": 678,
+    "sizes": [],
+    "image": "/images/product-1755266583430-527556943.jpg"
+  }
+]
