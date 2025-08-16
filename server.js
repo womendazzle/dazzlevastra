@@ -7,7 +7,18 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const Razorpay = require("razorpay");
 
-// ✅ Razorpay instance (use Render Environment Variables)
+// ✅ Check for Razorpay keys before creating instance
+if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+  console.error("❌ Missing Razorpay environment variables!");
+  console.error("RAZORPAY_KEY_ID:", process.env.RAZORPAY_KEY_ID || "NOT SET");
+  console.error(
+    "RAZORPAY_KEY_SECRET:",
+    process.env.RAZORPAY_KEY_SECRET ? "Loaded ✅" : "NOT SET ❌"
+  );
+  process.exit(1); // stop the server to avoid crashes later
+}
+
+// ✅ Razorpay instance
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET
