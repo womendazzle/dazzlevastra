@@ -7,10 +7,10 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const Razorpay = require("razorpay");
 
-// ✅ Razorpay instance (TEST KEYS)
+// ✅ Razorpay instance (use Render Environment Variables)
 const razorpay = new Razorpay({
-  key_id: "rzp_test_ue0gxBZfnxX0qZ",            // ✅ Public Key
-  key_secret: "Mk7IqK14yTuWZGdAMR0JYae9"         // ✅ Secret Key (Only in backend)
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
 // ✅ Middleware
@@ -19,18 +19,18 @@ app.use(express.json({ limit: "10mb" }));
 app.use(bodyParser.json({ limit: "10mb" }));
 
 // ✅ Serve static files
-app.use(express.static(path.join(__dirname, 'Public')));
-app.use('/images', express.static(path.join(__dirname, 'images')));
+app.use(express.static(path.join(__dirname, "Public")));
+app.use("/images", express.static(path.join(__dirname, "images")));
 
-// ✅ Multer setup
+// ✅ Multer setup for product images
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const dir = './images';
+    const dir = "./images";
     if (!fs.existsSync(dir)) fs.mkdirSync(dir);
     cb(null, dir);
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
     cb(null, `product-${uniqueSuffix}${ext}`);
   }
@@ -42,7 +42,6 @@ const ADMIN_CREDENTIALS = {
   username: "admin",
   password: "dazzle123"
 };
-
 app.post("/api/admin-login", (req, res) => {
   const { username, password } = req.body;
   if (
@@ -55,26 +54,35 @@ app.post("/api/admin-login", (req, res) => {
   }
 });
 
-// ✅ Save order to orders.json
-// ✅ Save order to orders.json with strict validation
+// ✅ Save order
 app.post("/api/order", (req, res) => {
   const order = req.body;
 
-  // Required fields except email
   const requiredFields = [
-    "name", "mobile", "address", "city", "state", "pincode",
-    "products", "total", "paymentId", "date"
+    "name",
+    "mobile",
+    "address",
+    "city",
+    "state",
+    "pincode",
+    "products",
+    "total",
+    "paymentId",
+    "date"
   ];
 
   for (let field of requiredFields) {
     if (!order[field] && field !== "email") {
-      return res.status(400).json({ success: false, message: `Missing field: ${field}` });
+      return res
+        .status(400)
+        .json({ success: false, message: `Missing field: ${field}` });
     }
   }
 
-  // Validate products array
   if (!Array.isArray(order.products) || order.products.length === 0) {
-    return res.status(400).json({ success: false, message: "Products must be a non-empty array" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Products must be a non-empty array" });
   }
 
   for (let p of order.products) {
@@ -86,14 +94,16 @@ app.post("/api/order", (req, res) => {
     }
   }
 
-  // Add payment status automatically
   order.paymentStatus = order.paymentId ? "Paid" : "Pending";
 
-  // Save to file
   fs.readFile("orders.json", "utf8", (err, data) => {
     let orders = [];
     if (!err && data) {
-      try { orders = JSON.parse(data); } catch { orders = []; }
+      try {
+        orders = JSON.parse(data);
+      } catch {
+        orders = [];
+      }
     }
     orders.push(order);
     fs.writeFile("orders.json", JSON.stringify(orders, null, 2), () => {
@@ -109,72 +119,6 @@ app.get("/orders.json", (req, res) => {
     res.json(JSON.parse(data));
   });
 });
-// UPDATE product (supports optional image upload)
-// PUT /api/update-product/:id
-app.put('/api/update-product/:id', upload.single('image'), (req, res) => {
-  const id = String(req.params.id);
-  fs.readFile('products.json', 'utf8', (err, data) => {
-    let products = [];
-    if (!err && data) {
-      try { products = JSON.parse(data); } catch(e){ products = []; }
-    }
-    const idx = products.findIndex(p => String(p.id) === id);
-    if (idx === -1) return res.status(404).json({ success: false, message: 'Product not found' });
-
-    const existing = products[idx];
-    // apply fields if provided
-    if (req.body.name) existing.name = req.body.name;
-    if (req.body.category) existing.category = req.body.category;
-    if (req.body.price) existing.price = Number(req.body.price);
-    if (req.body.sizes) {
-      try { existing.sizes = JSON.parse(req.body.sizes); } catch(e){ existing.sizes = (req.body.sizes || '').split(',').map(s=>s.trim()).filter(Boolean); }
-    }
-
-    // if new image uploaded, replace path and optionally delete old file
-    if (req.file) {
-      const newPath = '/images/' + req.file.filename;
-      // attempt to remove old local image if it was a local path (starts with /images)
-      if (existing.image && existing.image.startsWith('/images')) {
-        const oldFile = path.join(__dirname, existing.image);
-        fs.unlink(oldFile, () => {}); // ignore errors
-      }
-      existing.image = newPath;
-    }
-
-    products[idx] = existing;
-    fs.writeFile('products.json', JSON.stringify(products, null, 2), (werr) => {
-      if (werr) return res.status(500).json({ success: false });
-      res.json({ success: true, product: existing });
-    });
-  });
-});
-
-// DELETE product
-// DELETE /api/delete-product/:id
-app.delete('/api/delete-product/:id', (req, res) => {
-  const id = String(req.params.id);
-  fs.readFile('products.json', 'utf8', (err, data) => {
-    let products = [];
-    if (!err && data) {
-      try { products = JSON.parse(data); } catch(e){ products = []; }
-    }
-    const idx = products.findIndex(p => String(p.id) === id);
-    if (idx === -1) return res.status(404).json({ success: false, message: 'Product not found' });
-
-    const [removed] = products.splice(idx, 1);
-    // delete image file for local images (best-effort)
-    if (removed && removed.image && removed.image.startsWith('/images')) {
-      const filePath = path.join(__dirname, removed.image);
-      fs.unlink(filePath, () => {}); // ignore errors
-    }
-
-    fs.writeFile('products.json', JSON.stringify(products, null, 2), (werr) => {
-      if (werr) return res.status(500).json({ success: false });
-      res.json({ success: true });
-    });
-  });
-});
-
 
 // ✅ Delete order
 app.post("/delete-order", (req, res) => {
@@ -194,7 +138,56 @@ app.post("/delete-order", (req, res) => {
   });
 });
 
-// ✅ Get products
+// ✅ Update payment
+app.post("/api/update-payment", (req, res) => {
+  const { id, paymentId, paymentStatus } = req.body;
+
+  if (!id || !paymentStatus) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing required fields" });
+  }
+
+  fs.readFile("orders.json", "utf8", (err, data) => {
+    if (err)
+      return res
+        .status(500)
+        .json({ success: false, message: "Failed to read orders file" });
+
+    let orders = [];
+    try {
+      orders = JSON.parse(data);
+    } catch {
+      return res
+        .status(500)
+        .json({ success: false, message: "Invalid orders file" });
+    }
+
+    const index = orders.findIndex(o => String(o.id) === String(id));
+    if (index === -1) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
+    }
+
+    orders[index].paymentId = paymentId || "-";
+    orders[index].paymentStatus = paymentStatus;
+
+    fs.writeFile("orders.json", JSON.stringify(orders, null, 2), err => {
+      if (err)
+        return res
+          .status(500)
+          .json({ success: false, message: "Failed to update order" });
+      res.json({
+        success: true,
+        message: "Payment status updated",
+        order: orders[index]
+      });
+    });
+  });
+});
+
+// ✅ Products APIs
 app.get("/products.json", (req, res) => {
   fs.readFile("products.json", "utf8", (err, data) => {
     if (err) return res.json([]);
@@ -202,14 +195,15 @@ app.get("/products.json", (req, res) => {
   });
 });
 
-// ✅ Add new product
 app.post("/api/add-product", upload.single("image"), (req, res) => {
   try {
     const { name, category, price } = req.body;
     const sizes = JSON.parse(req.body.sizes || "[]");
 
     if (!req.file || !name || !category || !price) {
-      return res.status(400).json({ success: false, message: "Missing fields" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing fields" });
     }
 
     const imagePath = "/images/" + req.file.filename;
@@ -245,13 +239,92 @@ app.post("/api/add-product", upload.single("image"), (req, res) => {
   }
 });
 
-// ✅ Razorpay Order API (secure)
+app.put("/api/update-product/:id", upload.single("image"), (req, res) => {
+  const id = String(req.params.id);
+  fs.readFile("products.json", "utf8", (err, data) => {
+    let products = [];
+    if (!err && data) {
+      try {
+        products = JSON.parse(data);
+      } catch (e) {
+        products = [];
+      }
+    }
+    const idx = products.findIndex(p => String(p.id) === id);
+    if (idx === -1)
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
+
+    const existing = products[idx];
+    if (req.body.name) existing.name = req.body.name;
+    if (req.body.category) existing.category = req.body.category;
+    if (req.body.price) existing.price = Number(req.body.price);
+    if (req.body.sizes) {
+      try {
+        existing.sizes = JSON.parse(req.body.sizes);
+      } catch (e) {
+        existing.sizes = (req.body.sizes || "")
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean);
+      }
+    }
+
+    if (req.file) {
+      const newPath = "/images/" + req.file.filename;
+      if (existing.image && existing.image.startsWith("/images")) {
+        const oldFile = path.join(__dirname, existing.image);
+        fs.unlink(oldFile, () => {});
+      }
+      existing.image = newPath;
+    }
+
+    products[idx] = existing;
+    fs.writeFile("products.json", JSON.stringify(products, null, 2), werr => {
+      if (werr) return res.status(500).json({ success: false });
+      res.json({ success: true, product: existing });
+    });
+  });
+});
+
+app.delete("/api/delete-product/:id", (req, res) => {
+  const id = String(req.params.id);
+  fs.readFile("products.json", "utf8", (err, data) => {
+    let products = [];
+    if (!err && data) {
+      try {
+        products = JSON.parse(data);
+      } catch (e) {
+        products = [];
+      }
+    }
+    const idx = products.findIndex(p => String(p.id) === id);
+    if (idx === -1)
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
+
+    const [removed] = products.splice(idx, 1);
+    if (removed && removed.image && removed.image.startsWith("/images")) {
+      const filePath = path.join(__dirname, removed.image);
+      fs.unlink(filePath, () => {});
+    }
+
+    fs.writeFile("products.json", JSON.stringify(products, null, 2), werr => {
+      if (werr) return res.status(500).json({ success: false });
+      res.json({ success: true });
+    });
+  });
+});
+
+// ✅ Razorpay order
 app.post("/create-order", async (req, res) => {
   const { amount } = req.body;
 
   try {
     const order = await razorpay.orders.create({
-      amount: amount * 100, // Razorpay needs amount in paisa
+      amount: amount * 100,
       currency: "INR",
       receipt: "order_rcptid_" + Date.now()
     });
@@ -262,43 +335,9 @@ app.post("/create-order", async (req, res) => {
     res.status(500).json({ success: false, message: "Payment failed" });
   }
 });
-// ✅ Update payment status for an existing order
-
-app.post("/api/update-payment", (req, res) => {
-  const { id, paymentId, paymentStatus } = req.body;
-
-  if (!id || !paymentStatus) {
-    return res.status(400).json({ success: false, message: "Missing required fields" });
-  }
-
-  fs.readFile("orders.json", "utf8", (err, data) => {
-    if (err) return res.status(500).json({ success: false, message: "Failed to read orders file" });
-
-    let orders = [];
-    try {
-      orders = JSON.parse(data);
-    } catch {
-      return res.status(500).json({ success: false, message: "Invalid orders file" });
-    }
-
-    const index = orders.findIndex(o => String(o.id) === String(id));
-    if (index === -1) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
-
-    // Update payment details
-    orders[index].paymentId = paymentId || "-";
-    orders[index].paymentStatus = paymentStatus;
-
-    fs.writeFile("orders.json", JSON.stringify(orders, null, 2), (err) => {
-      if (err) return res.status(500).json({ success: false, message: "Failed to update order" });
-      res.json({ success: true, message: "Payment status updated", order: orders[index] });
-    });
-  });
-});
-
 
 // ✅ Start server
-app.listen(3000, () => {
-  console.log("✅ Server running at http://localhost:3000");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
 });
