@@ -10,12 +10,7 @@ const Razorpay = require("razorpay");
 // ✅ Check for Razorpay keys before creating instance
 if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
   console.error("❌ Missing Razorpay environment variables!");
-  console.error("RAZORPAY_KEY_ID:", process.env.RAZORPAY_KEY_ID || "NOT SET");
-  console.error(
-    "RAZORPAY_KEY_SECRET:",
-    process.env.RAZORPAY_KEY_SECRET ? "Loaded ✅" : "NOT SET ❌"
-  );
-  process.exit(1); // stop the server to avoid crashes later
+  process.exit(1);
 }
 
 // ✅ Razorpay instance
@@ -33,10 +28,10 @@ app.use(bodyParser.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "Public")));
 app.use("/images", express.static(path.join(__dirname, "images")));
 
-// ✅ Multer setup for product images
+// ✅ Multer setup
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const dir = "./images";
+    const dir = path.join(__dirname, "images");
     if (!fs.existsSync(dir)) fs.mkdirSync(dir);
     cb(null, dir);
   },
@@ -49,10 +44,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 // ✅ Admin login
-const ADMIN_CREDENTIALS = {
-  username: "admin",
-  password: "dazzle123"
-};
+const ADMIN_CREDENTIALS = { username: "admin", password: "dazzle123" };
 app.post("/api/admin-login", (req, res) => {
   const { username, password } = req.body;
   if (
@@ -65,44 +57,12 @@ app.post("/api/admin-login", (req, res) => {
   }
 });
 
-// ✅ Save order
+// ✅ Orders API
 app.post("/api/order", (req, res) => {
   const order = req.body;
 
-  const requiredFields = [
-    "name",
-    "mobile",
-    "address",
-    "city",
-    "state",
-    "pincode",
-    "products",
-    "total",
-    "paymentId",
-    "date"
-  ];
-
-  for (let field of requiredFields) {
-    if (!order[field] && field !== "email") {
-      return res
-        .status(400)
-        .json({ success: false, message: `Missing field: ${field}` });
-    }
-  }
-
-  if (!Array.isArray(order.products) || order.products.length === 0) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Products must be a non-empty array" });
-  }
-
-  for (let p of order.products) {
-    if (!p.id || !p.name || !p.image || !p.size || !p.price) {
-      return res.status(400).json({
-        success: false,
-        message: "Each product must have id, name, image, size, and price"
-      });
-    }
+  if (!order.name || !order.mobile || !order.products) {
+    return res.status(400).json({ success: false, message: "Missing fields" });
   }
 
   order.paymentStatus = order.paymentId ? "Paid" : "Pending";
@@ -123,16 +83,14 @@ app.post("/api/order", (req, res) => {
   });
 });
 
-// ✅ Get all orders
-app.get("/orders.json", (req, res) => {
+app.get("/api/orders", (req, res) => {
   fs.readFile("orders.json", "utf8", (err, data) => {
     if (err) return res.json([]);
     res.json(JSON.parse(data));
   });
 });
 
-// ✅ Delete order
-app.post("/delete-order", (req, res) => {
+app.post("/api/delete-order", (req, res) => {
   const index = req.body.index;
   fs.readFile("orders.json", "utf8", (err, data) => {
     if (err) return res.status(500).send("Failed to read orders.");
@@ -149,57 +107,8 @@ app.post("/delete-order", (req, res) => {
   });
 });
 
-// ✅ Update payment
-app.post("/api/update-payment", (req, res) => {
-  const { id, paymentId, paymentStatus } = req.body;
-
-  if (!id || !paymentStatus) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Missing required fields" });
-  }
-
-  fs.readFile("orders.json", "utf8", (err, data) => {
-    if (err)
-      return res
-        .status(500)
-        .json({ success: false, message: "Failed to read orders file" });
-
-    let orders = [];
-    try {
-      orders = JSON.parse(data);
-    } catch {
-      return res
-        .status(500)
-        .json({ success: false, message: "Invalid orders file" });
-    }
-
-    const index = orders.findIndex(o => String(o.id) === String(id));
-    if (index === -1) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
-    }
-
-    orders[index].paymentId = paymentId || "-";
-    orders[index].paymentStatus = paymentStatus;
-
-    fs.writeFile("orders.json", JSON.stringify(orders, null, 2), err => {
-      if (err)
-        return res
-          .status(500)
-          .json({ success: false, message: "Failed to update order" });
-      res.json({
-        success: true,
-        message: "Payment status updated",
-        order: orders[index]
-      });
-    });
-  });
-});
-
-// ✅ Products APIs
-app.get("/products.json", (req, res) => {
+// ✅ Products API
+app.get("/api/products", (req, res) => {
   fs.readFile("products.json", "utf8", (err, data) => {
     if (err) return res.json([]);
     res.json(JSON.parse(data));
@@ -250,101 +159,25 @@ app.post("/api/add-product", upload.single("image"), (req, res) => {
   }
 });
 
-app.put("/api/update-product/:id", upload.single("image"), (req, res) => {
-  const id = String(req.params.id);
-  fs.readFile("products.json", "utf8", (err, data) => {
-    let products = [];
-    if (!err && data) {
-      try {
-        products = JSON.parse(data);
-      } catch (e) {
-        products = [];
-      }
-    }
-    const idx = products.findIndex(p => String(p.id) === id);
-    if (idx === -1)
-      return res
-        .status(404)
-        .json({ success: false, message: "Product not found" });
-
-    const existing = products[idx];
-    if (req.body.name) existing.name = req.body.name;
-    if (req.body.category) existing.category = req.body.category;
-    if (req.body.price) existing.price = Number(req.body.price);
-    if (req.body.sizes) {
-      try {
-        existing.sizes = JSON.parse(req.body.sizes);
-      } catch (e) {
-        existing.sizes = (req.body.sizes || "")
-          .split(",")
-          .map(s => s.trim())
-          .filter(Boolean);
-      }
-    }
-
-    if (req.file) {
-      const newPath = "/images/" + req.file.filename;
-      if (existing.image && existing.image.startsWith("/images")) {
-        const oldFile = path.join(__dirname, existing.image);
-        fs.unlink(oldFile, () => {});
-      }
-      existing.image = newPath;
-    }
-
-    products[idx] = existing;
-    fs.writeFile("products.json", JSON.stringify(products, null, 2), werr => {
-      if (werr) return res.status(500).json({ success: false });
-      res.json({ success: true, product: existing });
-    });
-  });
-});
-
-app.delete("/api/delete-product/:id", (req, res) => {
-  const id = String(req.params.id);
-  fs.readFile("products.json", "utf8", (err, data) => {
-    let products = [];
-    if (!err && data) {
-      try {
-        products = JSON.parse(data);
-      } catch (e) {
-        products = [];
-      }
-    }
-    const idx = products.findIndex(p => String(p.id) === id);
-    if (idx === -1)
-      return res
-        .status(404)
-        .json({ success: false, message: "Product not found" });
-
-    const [removed] = products.splice(idx, 1);
-    if (removed && removed.image && removed.image.startsWith("/images")) {
-      const filePath = path.join(__dirname, removed.image);
-      fs.unlink(filePath, () => {});
-    }
-
-    fs.writeFile("products.json", JSON.stringify(products, null, 2), werr => {
-      if (werr) return res.status(500).json({ success: false });
-      res.json({ success: true });
-    });
-  });
-});
-
 // ✅ Razorpay order
-app.post("/create-order", async (req, res) => {
+app.post("/api/create-order", async (req, res) => {
   const { amount } = req.body;
-
   try {
     const order = await razorpay.orders.create({
       amount: amount * 100,
       currency: "INR",
       receipt: "order_rcptid_" + Date.now()
     });
-
     res.json(order);
   } catch (err) {
     console.error("Razorpay order creation error:", err);
     res.status(500).json({ success: false, message: "Payment failed" });
   }
+});
+
+// ✅ Serve frontend (SPA fallback)
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "Public", "index.html"));
 });
 
 // ✅ Start server
