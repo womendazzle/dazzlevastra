@@ -7,7 +7,23 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const Razorpay = require("razorpay");
 
-// ✅ Check for Razorpay keys before creating instance
+// ✅ Paths for JSON data storage
+const DATA_DIR = path.join(__dirname, "data");
+const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
+const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
+
+// ✅ Ensure data folder exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR);
+}
+if (!fs.existsSync(PRODUCTS_FILE)) {
+  fs.writeFileSync(PRODUCTS_FILE, "[]");
+}
+if (!fs.existsSync(ORDERS_FILE)) {
+  fs.writeFileSync(ORDERS_FILE, "[]");
+}
+
+// ✅ Check for Razorpay keys
 if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
   console.error("❌ Missing Razorpay environment variables!");
   process.exit(1);
@@ -16,7 +32,7 @@ if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
 // ✅ Razorpay instance
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
 // ✅ Middleware
@@ -39,7 +55,7 @@ const storage = multer.diskStorage({
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
     cb(null, `product-${uniqueSuffix}${ext}`);
-  }
+  },
 });
 const upload = multer({ storage: storage });
 
@@ -67,7 +83,7 @@ app.post("/api/order", (req, res) => {
 
   order.paymentStatus = order.paymentId ? "Paid" : "Pending";
 
-  fs.readFile("orders.json", "utf8", (err, data) => {
+  fs.readFile(ORDERS_FILE, "utf8", (err, data) => {
     let orders = [];
     if (!err && data) {
       try {
@@ -77,14 +93,14 @@ app.post("/api/order", (req, res) => {
       }
     }
     orders.push(order);
-    fs.writeFile("orders.json", JSON.stringify(orders, null, 2), () => {
+    fs.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2), () => {
       res.json({ success: true, message: "Order saved", order });
     });
   });
 });
 
 app.get("/api/orders", (req, res) => {
-  fs.readFile("orders.json", "utf8", (err, data) => {
+  fs.readFile(ORDERS_FILE, "utf8", (err, data) => {
     if (err) return res.json([]);
     res.json(JSON.parse(data));
   });
@@ -92,12 +108,12 @@ app.get("/api/orders", (req, res) => {
 
 app.post("/api/delete-order", (req, res) => {
   const index = req.body.index;
-  fs.readFile("orders.json", "utf8", (err, data) => {
+  fs.readFile(ORDERS_FILE, "utf8", (err, data) => {
     if (err) return res.status(500).send("Failed to read orders.");
     let orders = JSON.parse(data);
     if (index >= 0 && index < orders.length) {
       orders.splice(index, 1);
-      fs.writeFile("orders.json", JSON.stringify(orders, null, 2), err => {
+      fs.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2), (err) => {
         if (err) return res.status(500).send("Delete failed");
         res.send("Order deleted");
       });
@@ -109,7 +125,7 @@ app.post("/api/delete-order", (req, res) => {
 
 // ✅ Products API
 app.get("/api/products", (req, res) => {
-  fs.readFile("products.json", "utf8", (err, data) => {
+  fs.readFile(PRODUCTS_FILE, "utf8", (err, data) => {
     if (err) return res.json([]);
     res.json(JSON.parse(data));
   });
@@ -134,10 +150,10 @@ app.post("/api/add-product", upload.single("image"), (req, res) => {
       category,
       price: Number(price),
       sizes,
-      image: imagePath
+      image: imagePath,
     };
 
-    fs.readFile("products.json", "utf8", (err, data) => {
+    fs.readFile(PRODUCTS_FILE, "utf8", (err, data) => {
       let products = [];
       if (!err && data) {
         try {
@@ -149,7 +165,7 @@ app.post("/api/add-product", upload.single("image"), (req, res) => {
 
       products.push(newProduct);
 
-      fs.writeFile("products.json", JSON.stringify(products, null, 2), () => {
+      fs.writeFile(PRODUCTS_FILE, JSON.stringify(products, null, 2), () => {
         res.json({ success: true });
       });
     });
@@ -166,7 +182,7 @@ app.post("/api/create-order", async (req, res) => {
     const order = await razorpay.orders.create({
       amount: amount * 100,
       currency: "INR",
-      receipt: "order_rcptid_" + Date.now()
+      receipt: "order_rcptid_" + Date.now(),
     });
     res.json(order);
   } catch (err) {
