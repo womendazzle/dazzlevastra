@@ -191,8 +191,8 @@ app.post("/api/create-order", async (req, res) => {
   }
 });
 
-// ✅ Serve frontend (SPA fallback)
-app.get("*", (req, res) => {
+// ✅ Serve frontend files (only for non-API routes)
+app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, "Public", "index.html"));
 });
 
