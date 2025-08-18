@@ -61,7 +61,7 @@ const upload = multer({ storage: storage });
 
 // ✅ Admin login
 const ADMIN_CREDENTIALS = { username: "admin", password: "dazzle123" };
-app.post("/api/admin-login", (req, res) => {
+app.post("admin-login", (req, res) => {
   const { username, password } = req.body;
   if (
     username === ADMIN_CREDENTIALS.username &&
@@ -74,7 +74,7 @@ app.post("/api/admin-login", (req, res) => {
 });
 
 // ✅ Orders API
-app.post("/api/order", (req, res) => {
+app.post("order", (req, res) => {
   const order = req.body;
 
   if (!order.name || !order.mobile || !order.products) {
@@ -99,14 +99,14 @@ app.post("/api/order", (req, res) => {
   });
 });
 
-app.get("/api/orders", (req, res) => {
+app.get("orders", (req, res) => {
   fs.readFile(ORDERS_FILE, "utf8", (err, data) => {
     if (err) return res.json([]);
     res.json(JSON.parse(data));
   });
 });
 
-app.post("/api/delete-order", (req, res) => {
+app.post("delete-order", (req, res) => {
   const index = req.body.index;
   fs.readFile(ORDERS_FILE, "utf8", (err, data) => {
     if (err) return res.status(500).send("Failed to read orders.");
@@ -124,14 +124,14 @@ app.post("/api/delete-order", (req, res) => {
 });
 
 // ✅ Products API
-app.get("/api/products", (req, res) => {
+app.get("products", (req, res) => {
   fs.readFile(PRODUCTS_FILE, "utf8", (err, data) => {
     if (err) return res.json([]);
     res.json(JSON.parse(data));
   });
 });
 
-app.post("/api/add-product", upload.single("image"), (req, res) => {
+app.post("add-product", upload.single("image"), (req, res) => {
   try {
     const { name, category, price } = req.body;
     const sizes = JSON.parse(req.body.sizes || "[]");
@@ -176,7 +176,7 @@ app.post("/api/add-product", upload.single("image"), (req, res) => {
 });
 
 // ✅ Razorpay order
-app.post("/api/create-order", async (req, res) => {
+app.post("reate-order", async (req, res) => {
   const { amount } = req.body;
   try {
     const order = await razorpay.orders.create({
