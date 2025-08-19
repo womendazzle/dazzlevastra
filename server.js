@@ -1,184 +1,140 @@
 // server.js
-const express = require("express");
-const app = express();
-const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
-const bodyParser = require("body-parser");
-const multer = require("multer");
-const Razorpay = require("razorpay");
+import express from "express";
+import multer from "multer";
+import fs from "fs";
+import path from "path";
+import bodyParser from "body-parser";
+import cors from "cors";
+import Razorpay from "razorpay";
 
-// ✅ Paths for JSON data storage
-const DATA_DIR = path.join(__dirname, "data");
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ✅ Paths
+const DATA_DIR = path.join(process.cwd(), "data");
 const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 
-// ✅ Ensure data folder exists
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+// ✅ Ensure folders/files exist
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(PRODUCTS_FILE)) fs.writeFileSync(PRODUCTS_FILE, "[]");
 if (!fs.existsSync(ORDERS_FILE)) fs.writeFileSync(ORDERS_FILE, "[]");
 
-// ✅ Razorpay instance
-if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-  console.error("❌ Missing Razorpay environment variables!");
-  process.exit(1);
-}
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+// ✅ CORS (allow frontend domain + local dev)
+app.use(cors({
+  origin: ["https://dazzlevastra.com", "http://localhost:3000"],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
 
 // ✅ Middleware
-app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use(bodyParser.json({ limit: "10mb" }));
-app.use("/images", express.static(path.join(__dirname, "images")));
+app.use("/uploads", express.static("uploads"));
 
-// ✅ Multer setup (file uploads)
+// ✅ Multer setup for product images
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const dir = path.join(__dirname, "images");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+  destination: (req, file, cb) => {
+    const dir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
-  filename: function (req, file, cb) {
+  filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, `product-${uniqueSuffix}${ext}`);
-  },
+    cb(null, "product-" + uniqueSuffix + path.extname(file.originalname));
+  }
 });
 const upload = multer({ storage });
 
-// ✅ Admin login
-const ADMIN_CREDENTIALS = { username: "admin", password: "dazzle123" };
-app.post("/api/admin-login", (req, res) => {
-  const { username, password } = req.body;
-  if (
-    username === ADMIN_CREDENTIALS.username &&
-    password === ADMIN_CREDENTIALS.password
-  ) {
-    res.json({ success: true });
-  } else {
-    res.status(401).json({ success: false, message: "Invalid credentials" });
-  }
+// ✅ Razorpay setup (safe check)
+if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+  console.warn("⚠️ Razorpay keys missing. Payments will not work.");
+}
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || "dummy",
+  key_secret: process.env.RAZORPAY_KEY_SECRET || "dummy"
 });
 
-// ✅ Orders API
-app.post("/api/order", (req, res) => {
-  const order = req.body;
-  if (!order.name || !order.products) {
-    return res.status(400).json({ success: false, message: "Missing fields" });
-  }
-
-  order.paymentStatus = order.paymentId ? "Paid" : "Pending";
-
-  fs.readFile(ORDERS_FILE, "utf8", (err, data) => {
-    let orders = [];
-    if (!err && data) {
-      try {
-        orders = JSON.parse(data);
-      } catch {
-        orders = [];
-      }
-    }
-    orders.push(order);
-    fs.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2), () => {
-      res.json({ success: true, message: "Order saved", order });
-    });
-  });
-});
-
-app.get("/api/orders", (req, res) => {
-  fs.readFile(ORDERS_FILE, "utf8", (err, data) => {
-    if (err) return res.json([]);
-    res.json(JSON.parse(data));
-  });
-});
-
-app.post("/api/delete-order", (req, res) => {
-  const index = req.body.index;
-  fs.readFile(ORDERS_FILE, "utf8", (err, data) => {
-    if (err) return res.status(500).send("Failed to read orders.");
-    let orders = JSON.parse(data);
-    if (index >= 0 && index < orders.length) {
-      orders.splice(index, 1);
-      fs.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2), (err) => {
-        if (err) return res.status(500).send("Delete failed");
-        res.send("Order deleted");
-      });
-    } else {
-      res.status(400).send("Invalid index");
-    }
-  });
-});
-
-// ✅ Products API
+/* ========== PRODUCTS API ========== */
 app.get("/api/products", (req, res) => {
-  fs.readFile(PRODUCTS_FILE, "utf8", (err, data) => {
-    if (err) return res.json([]);
-    res.json(JSON.parse(data));
-  });
+  try {
+    const data = fs.readFileSync(PRODUCTS_FILE, "utf8");
+    res.json(JSON.parse(data || "[]"));
+  } catch (err) {
+    console.error("❌ Products read error:", err);
+    res.json([]);
+  }
 });
 
 app.post("/api/add-product", upload.single("image"), (req, res) => {
   try {
     const { name, category, price } = req.body;
     const sizes = JSON.parse(req.body.sizes || "[]");
-
-    if (!req.file || !name || !category || !price) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing fields" });
+    if (!name || !category || !price) {
+      return res.status(400).json({ success: false, message: "Missing fields" });
     }
-
-    const imagePath = "/images/" + req.file.filename;
     const newProduct = {
-      id: Date.now(),
+      id: Date.now().toString(),
       name,
       category,
       price: Number(price),
       sizes,
-      image: imagePath,
+      image: req.file ? "/uploads/" + req.file.filename : ""
     };
-
-    fs.readFile(PRODUCTS_FILE, "utf8", (err, data) => {
-      let products = [];
-      if (!err && data) {
-        try {
-          products = JSON.parse(data);
-        } catch {
-          products = [];
-        }
-      }
-      products.push(newProduct);
-      fs.writeFile(PRODUCTS_FILE, JSON.stringify(products, null, 2), () => {
-        res.json({ success: true });
-      });
-    });
+    const products = JSON.parse(fs.readFileSync(PRODUCTS_FILE, "utf8") || "[]");
+    products.push(newProduct);
+    fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2));
+    res.json({ success: true, product: newProduct });
   } catch (err) {
-    console.error("Error adding product:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("❌ Add product error:", err);
+    res.status(500).json({ success: false });
   }
 });
 
-// ✅ Razorpay order
-app.post("/api/create-order", async (req, res) => {
-  const { amount } = req.body;
+/* ========== ORDERS API ========== */
+app.get("/api/orders", (req, res) => {
   try {
+    const data = fs.readFileSync(ORDERS_FILE, "utf8");
+    res.json(JSON.parse(data || "[]"));
+  } catch (err) {
+    console.error("❌ Orders read error:", err);
+    res.json([]);
+  }
+});
+
+app.post("/api/order", (req, res) => {
+  try {
+    const order = req.body;
+    order.id = Date.now().toString();
+    order.date = new Date().toISOString();
+    const orders = JSON.parse(fs.readFileSync(ORDERS_FILE, "utf8") || "[]");
+    orders.push(order);
+    fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2));
+    res.json({ success: true, order });
+  } catch (err) {
+    console.error("❌ Order save error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
+/* ========== PAYMENTS API ========== */
+app.post("/api/create-order", async (req, res) => {
+  try {
+    const { amount } = req.body;
+    if (!amount) return res.status(400).json({ success: false, message: "Amount missing" });
     const order = await razorpay.orders.create({
       amount: amount * 100,
       currency: "INR",
-      receipt: "order_rcptid_" + Date.now(),
+      receipt: "rcpt_" + Date.now()
     });
     res.json(order);
   } catch (err) {
-    console.error("Razorpay order creation error:", err);
+    console.error("❌ Razorpay error:", err);
     res.status(500).json({ success: false, message: "Payment failed" });
   }
 });
 
-// ✅ Start server
-const PORT = process.env.PORT || 3000;
+/* ========== START SERVER ========== */
 app.listen(PORT, () => {
-  console.log(`✅ API Server running on port ${PORT}`);
+  console.log(`✅ Backend running on http://localhost:${PORT}`);
 });
