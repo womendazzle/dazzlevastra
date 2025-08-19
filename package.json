@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Dazzle Vastra backend and frontend deployment",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
