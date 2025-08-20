@@ -21,11 +21,13 @@ if (!fs.existsSync(PRODUCTS_FILE)) fs.writeFileSync(PRODUCTS_FILE, "[]");
 if (!fs.existsSync(ORDERS_FILE)) fs.writeFileSync(ORDERS_FILE, "[]");
 
 // ✅ CORS (allow frontend domain + local dev)
-app.use(cors({
-  origin: ["https://dazzlevastra.com", "http://localhost:3000"],
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: ["https://dazzlevastra.com", "http://localhost:3000"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
 
 // ✅ Middleware
 app.use(express.json({ limit: "10mb" }));
@@ -42,7 +44,7 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, "product-" + uniqueSuffix + path.extname(file.originalname));
-  }
+  },
 });
 const upload = multer({ storage });
 
@@ -52,10 +54,12 @@ if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
 }
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || "dummy",
-  key_secret: process.env.RAZORPAY_KEY_SECRET || "dummy"
+  key_secret: process.env.RAZORPAY_KEY_SECRET || "dummy",
 });
 
 /* ========== PRODUCTS API ========== */
+
+// Get all products
 app.get("/api/products", (req, res) => {
   try {
     const data = fs.readFileSync(PRODUCTS_FILE, "utf8");
@@ -66,6 +70,7 @@ app.get("/api/products", (req, res) => {
   }
 });
 
+// Add product
 app.post("/api/add-product", upload.single("image"), (req, res) => {
   try {
     const { name, category, price } = req.body;
@@ -79,9 +84,11 @@ app.post("/api/add-product", upload.single("image"), (req, res) => {
       category,
       price: Number(price),
       sizes,
-      image: req.file ? "/uploads/" + req.file.filename : ""
+      image: req.file ? "/uploads/" + req.file.filename : "",
     };
-    const products = JSON.parse(fs.readFileSync(PRODUCTS_FILE, "utf8") || "[]");
+    const products = JSON.parse(
+      fs.readFileSync(PRODUCTS_FILE, "utf8") || "[]"
+    );
     products.push(newProduct);
     fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2));
     res.json({ success: true, product: newProduct });
@@ -91,7 +98,55 @@ app.post("/api/add-product", upload.single("image"), (req, res) => {
   }
 });
 
+// Update product
+app.post("/api/update-product", upload.single("image"), (req, res) => {
+  try {
+    const { id, name, category, price, sizes } = req.body;
+    if (!id)
+      return res.status(400).json({ success: false, message: "Missing ID" });
+
+    let products = JSON.parse(fs.readFileSync(PRODUCTS_FILE, "utf8") || "[]");
+    const index = products.findIndex((p) => String(p.id) === String(id));
+    if (index === -1)
+      return res.status(404).json({ success: false, message: "Product not found" });
+
+    products[index].name = name || products[index].name;
+    products[index].category = category || products[index].category;
+    products[index].price = price ? Number(price) : products[index].price;
+    products[index].sizes = sizes ? JSON.parse(sizes) : products[index].sizes;
+    if (req.file) {
+      products[index].image = "/uploads/" + req.file.filename;
+    }
+
+    fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2));
+    res.json({ success: true, product: products[index] });
+  } catch (err) {
+    console.error("❌ Update product error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
+// Delete product
+app.post("/api/delete-product", (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id)
+      return res.status(400).json({ success: false, message: "Missing ID" });
+
+    let products = JSON.parse(fs.readFileSync(PRODUCTS_FILE, "utf8") || "[]");
+    const newProducts = products.filter((p) => String(p.id) !== String(id));
+
+    fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(newProducts, null, 2));
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Delete product error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
 /* ========== ORDERS API ========== */
+
+// Get all orders
 app.get("/api/orders", (req, res) => {
   try {
     const data = fs.readFileSync(ORDERS_FILE, "utf8");
@@ -102,6 +157,7 @@ app.get("/api/orders", (req, res) => {
   }
 });
 
+// Save order
 app.post("/api/order", (req, res) => {
   try {
     const order = req.body;
@@ -121,11 +177,14 @@ app.post("/api/order", (req, res) => {
 app.post("/api/create-order", async (req, res) => {
   try {
     const { amount } = req.body;
-    if (!amount) return res.status(400).json({ success: false, message: "Amount missing" });
+    if (!amount)
+      return res
+        .status(400)
+        .json({ success: false, message: "Amount missing" });
     const order = await razorpay.orders.create({
       amount: amount * 100,
       currency: "INR",
-      receipt: "rcpt_" + Date.now()
+      receipt: "rcpt_" + Date.now(),
     });
     res.json(order);
   } catch (err) {
